@@ -1,4 +1,4 @@
-# Virtual Lab: single-cell study design
+# Virtual Lab Task: Single-Cell Study Design
 
 Spend a fixed budget on a single-cell RNA follow-up study: recruit donors into batches, choose cells per library, add libraries or resequence, then analyse the returned count matrices to find which genes respond to a treatment in which cell type. Choices change the simulated data; donors, batches, cells and reads are separate resources with different information value.
 
