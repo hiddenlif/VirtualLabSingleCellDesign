@@ -8,6 +8,8 @@ JSON-lines exchange as in `labclient.py`: a `hello` line carries the config; the
 `{"action": ..., ...}` lines, reads `{"ok": true, "result": ...}` or `{"ok": false, "error": ...}`,
 and ends with `{"action": "submit", "result": {...}}`.
 
+The grader runs `solver.py` as an unprivileged user with `/app` read-only and no network access; each case has a 900-second wall-clock limit and at most 5000 messages. Standard output carries only protocol lines, so write diagnostics to standard error. A message that is not a JSON object with an `action` field ends the session.
+
 ### Actions
 
 - `status`: budget left, donors available, libraries per batch and each library's donor, condition, batch, cells and depth. Changes nothing.
@@ -21,9 +23,9 @@ and ends with `{"action": "submit", "result": {...}}`.
 A 40-gene panel; G01-G05, G06-G10 and G11-G15 mark type_1, type_2 and type_3 (own-type marker mean 14, other types 4);
 G16-G40 are test genes. For a cell of type t from donor d in batch b:
 
-- mean = base[t,g] x exp(donor[d,t,g]) x exp(batch[b,g]) x capture[b] x size, with donor and batch effects log-normal (standard deviations 0.15 and 0.25), size log-normal (0.25)
+- mean = base[t,g] x exp(donor[d,t,g]) x exp(batch[b,g]) x capture[b] x size, with donor and batch effects log-normal (standard deviations 0.15 and 0.25), capture[b] log-normal (0.15), size log-normal (0.25). For test genes, base[t,g] = exp(mu_g + u_tg) with mu_g ~ Normal(ln 15, 0.7) and u_tg ~ Normal(0, 0.4)
 - cases: mean multiplied by 2^lfc[t,g]; lfc is non-zero for 8 test genes, all in type_3 (magnitudes 0.7 to 1.2)
-- true molecules ~ negative binomial (dispersion 0.15), plus ambient molecules whose fraction is 0 to 0.12 in a normal library and 0.3 to 0.5 in a low-quality one
+- true molecules ~ negative binomial (dispersion 0.15), plus ambient molecules: each cell gets Poisson(a x profile_g) extra molecules of gene g, where profile_g is base[t,g] averaged over the three types and a is the library's ambient level, Uniform(0, 0.12) for a normal library and Uniform(0.3, 0.5) for a low-quality one (probability 0.15). `ambient_fraction_estimate` reports a plus Normal(0, 0.03) noise, clipped to [0, 1]
 - sequencing to r reads per cell observes each molecule with probability 1 - exp(-r / 8000)
 - donors differ in cell-type proportions (about 62%, 30%, 8%)
 
@@ -42,4 +44,4 @@ Pilot: libraries L1 to L4 (donors P1 to P4), 500 cells each, sequenced to 4000 r
 
 ## Scoring quantities (`lab.evaluate`, `lab.check_rules`)
 
-True effects called with the right sign, false calls among non-responding pairs, true effects inside their intervals, coverage of 0 among non-responding pairs, and the budget spent, donors and batches used (the design ledger).
+True effects called with the right sign, false calls among non-responding pairs, true effects inside their intervals and coverage of 0 among non-responding pairs (both reported, not graded), significant calls whose interval contains 0, and the budget spent, donors and batches used (the design ledger).

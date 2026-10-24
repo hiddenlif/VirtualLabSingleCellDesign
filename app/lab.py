@@ -199,7 +199,9 @@ class Lab:
 
 
 FOLLOW_UP_STEPS = ["recruit_donors", "new_libraries", "resequence", "no_further_acquisition"]
-RULES = {"min_true_called": 5, "max_false_calls": 2, "min_true_covered": 5, "min_null_coverage": 0.85}
+RULES = {"min_true_called": 5, "max_false_calls": 2}
+# Interval coverage (true_covered, null_coverage) is reported but not graded: with the effect range
+# disclosed, a fixed interval can meet any coverage rule, and width caps penalised legitimate methods.
 
 
 def evaluate(lab, result):
@@ -210,6 +212,7 @@ def evaluate(lab, result):
     eff = result.get("effects") if isinstance(result, dict) and isinstance(result.get("effects"), dict) else {}
     tp = fp = cov_true = n_true = n_null_rep = null_cov = n_reported = 0
     missing = 0
+    sig_spanning_zero = 0
     for ti, t in enumerate(TYPES):
         for gi in range(15, N_GENES):
             g = GENES[gi]
@@ -217,7 +220,11 @@ def evaluate(lab, result):
             try:
                 e = eff[t][g]
                 est, lo, hi, sig = float(e["log2fc"]), float(e["ci"][0]), float(e["ci"][1]), bool(e["significant"])
+                if not (np.all(np.isfinite([est, lo, hi])) and lo <= hi):
+                    raise ValueError("log2fc and interval must be finite with lo <= hi")
                 n_reported += 1
+                if sig and lo <= 0.0 <= hi:
+                    sig_spanning_zero += 1
             except Exception:
                 missing += 1
                 est = lo = hi = None
@@ -244,7 +251,8 @@ def evaluate(lab, result):
     out["follow_up_valid"] = (isinstance(fu, dict) and fu.get("next_step") in FOLLOW_UP_STEPS
                               and fu.get("cell_type") in TYPES + [None] and isinstance(fu.get("rationale"), str) and len(fu["rationale"]) > 0)
     out.update(true_effects=n_true, true_called_correct_sign=tp, false_calls=fp, true_covered=cov_true,
-               null_coverage=(null_cov / n_null_rep) if n_null_rep else 0.0, reported=n_reported, missing_tests=missing)
+               null_coverage=(null_cov / n_null_rep) if n_null_rep else 0.0, reported=n_reported, missing_tests=missing,
+               significant_with_interval_spanning_0=sig_spanning_zero)
     return out
 
 
@@ -255,13 +263,11 @@ def check_rules(m):
     if not m["follow_up_valid"]:
         why.append("follow_up missing or malformed")
     if m["missing_tests"]:
-        why.append("%d of 75 tests not reported" % m["missing_tests"])
+        why.append("%d of 75 tests not reported (or not finite with lo <= hi)" % m["missing_tests"])
+    if m["significant_with_interval_spanning_0"]:
+        why.append("%d tests called significant have an interval containing 0" % m["significant_with_interval_spanning_0"])
     if m["true_called_correct_sign"] < RULES["min_true_called"]:
         why.append("only %d of %d true effects called with the right sign" % (m["true_called_correct_sign"], m["true_effects"]))
     if m["false_calls"] > RULES["max_false_calls"]:
         why.append("%d false calls" % m["false_calls"])
-    if m["true_covered"] < RULES["min_true_covered"]:
-        why.append("only %d true effects inside their intervals" % m["true_covered"])
-    if m["null_coverage"] < RULES["min_null_coverage"]:
-        why.append("null interval coverage %.2f" % m["null_coverage"])
     return not why, why
