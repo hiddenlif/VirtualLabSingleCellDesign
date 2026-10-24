@@ -1,0 +1,8 @@
+# Linted and formatted with ruff using its default rules. The per-file exceptions below are deliberate.
+
+[lint.per-file-ignores]
+# The harness reports any solver failure as a session error instead of crashing, ignores errors while
+# cleaning up processes, and drops privileges between fork and exec in the child.
+"app/harness.py" = ["BLE001", "S110", "PLW1509"]
+# Malformed submissions of any kind are scored as rejected rather than raising.
+"app/lab.py" = ["BLE001"]

@@ -2,7 +2,6 @@
 
 The instrument is driven through `inst.call(action, **kwargs)`; see SPEC.md.
 """
-import numpy as np
 
 from labclient import Instrument
 

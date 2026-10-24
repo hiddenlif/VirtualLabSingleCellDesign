@@ -1,4 +1,5 @@
 """Run solver.py against the disclosed practice case and print metrics with known truth."""
+
 import json
 import sys
 from pathlib import Path
@@ -17,9 +18,14 @@ def main():
         print("session failed:", out["error"])
         return 1
     m = lab.evaluate(L, out["result"])
-    print("budget spent: %.2f of %.0f; donors sequenced: %s; batches used: %s" % (m["spent"], lab.BUDGET, m["donors_sequenced"], m["batches_used"]))
-    print("true effects called with the right sign: %d of %d; false calls: %d; true effects inside intervals: %d; null interval coverage: %.2f; tests missing: %d"
-          % (m["true_called_correct_sign"], m["true_effects"], m["false_calls"], m["true_covered"], m["null_coverage"], m["missing_tests"]))
+    print(
+        "budget spent: {:.2f} of {:.0f}; donors sequenced: {}; batches used: {}".format(
+            m["spent"], lab.BUDGET, m["donors_sequenced"], m["batches_used"]
+        )
+    )
+    print(
+        f"true effects called with the right sign: {m['true_called_correct_sign']} of {m['true_effects']}; false calls: {m['false_calls']}; true effects inside intervals: {m['true_covered']}; null interval coverage: {m['null_coverage']:.2f}; tests missing: {m['missing_tests']}"
+    )
     ok, why = lab.check_rules(m)
     print("meets the published rules on this case:", ok, why)
     return 0

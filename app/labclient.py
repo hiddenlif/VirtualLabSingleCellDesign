@@ -1,4 +1,5 @@
 """Client side of the instrument protocol. Import this from solver.py."""
+
 import base64
 import json
 import sys
@@ -16,7 +17,9 @@ class LabFault(Exception):
 def decode_array(obj):
     """Decode {"shape": [...], "dtype": "float32", "b64": "..."} into a numpy array."""
     raw = base64.b64decode(obj["b64"])
-    return np.frombuffer(raw, dtype=obj["dtype"]).reshape(obj["shape"]).astype("float64")
+    return (
+        np.frombuffer(raw, dtype=obj["dtype"]).reshape(obj["shape"]).astype("float64")
+    )
 
 
 class Instrument:
