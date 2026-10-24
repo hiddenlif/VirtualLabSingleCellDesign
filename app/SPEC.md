@@ -8,7 +8,7 @@ JSON-lines exchange as in `labclient.py`: a `hello` line carries the config; the
 `{"action": ..., ...}` lines, reads `{"ok": true, "result": ...}` or `{"ok": false, "error": ...}`,
 and ends with `{"action": "submit", "result": {...}}`.
 
-The grader runs `solver.py` as an unprivileged user with `/app` read-only and no network access; each case has a 900-second wall-clock limit and at most 5000 messages. Standard output carries only protocol lines, so write diagnostics to standard error. A message that is not a JSON object with an `action` field ends the session.
+The grader runs `solver.py` as an unprivileged user with `/app` read-only and no network access; each case has a 900-second wall-clock limit and at most 5000 messages. Standard output carries only protocol lines, so write diagnostics to standard error. A message that is not a JSON object with an `action` field, or a protocol line longer than 1,048,576 characters, ends the session.
 
 ### Actions
 

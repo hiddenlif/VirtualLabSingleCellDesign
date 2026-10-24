@@ -17,14 +17,27 @@ class LabError(Exception):
     """An action the instrument refuses; reported to the solver as ok=false."""
 
 
+MAX_LINE = 1 << 20  # longest accepted protocol line, in characters
+OVERSIZE = object()
+
+
 def _reader(stream, q):
-    for line in stream:
+    while True:
+        line = stream.readline(MAX_LINE + 1)
+        if not line:
+            break
+        if len(line) > MAX_LINE:
+            q.put(OVERSIZE)
+            return
         q.put(line)
     q.put(None)
 
 
 def _drain(stream, sink):
-    for line in stream:
+    while True:
+        line = stream.readline(4096)  # bounded reads; long stderr lines are truncated
+        if not line:
+            break
         if len(sink) < 50:
             sink.append(line.rstrip()[:300])
 
@@ -86,6 +99,9 @@ def run_session(lab, solver_path, cwd, wall_seconds=900, max_messages=5000, uid=
                 line = out_q.get(timeout=min(remaining, 5.0))
             except queue.Empty:
                 continue
+            if line is OVERSIZE:
+                outcome["error"] = "protocol line longer than %d characters" % MAX_LINE
+                break
             if line is None:
                 outcome["error"] = "solver exited without submitting" + (
                     ": " + " | ".join(err_lines[-3:]) if err_lines else "")
