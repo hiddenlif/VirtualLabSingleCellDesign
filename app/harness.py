@@ -1,0 +1,110 @@
+"""Serves a simulated lab to a solver process over newline-delimited JSON.
+
+The solver runs as a child process and sees only the messages it is sent. The simulator
+state, including any hidden truth, stays in this parent process.
+"""
+import json
+import os
+import queue
+import subprocess
+import sys
+import threading
+import time
+
+
+class LabError(Exception):
+    """An action the instrument refuses; reported to the solver as ok=false."""
+
+
+def _reader(stream, q):
+    for line in stream:
+        q.put(line)
+    q.put(None)
+
+
+def _drain(stream, sink):
+    for line in stream:
+        if len(sink) < 50:
+            sink.append(line.rstrip()[:300])
+
+
+def run_session(lab, solver_path, cwd, wall_seconds=900, max_messages=5000, uid=None):
+    """Run one solver against one lab instance.
+
+    Returns {"result": submitted dict or None, "error": str or None, "messages": int,
+    "trace": list of (action, ok) pairs}.
+    """
+    demote = None
+    if uid is not None and hasattr(os, "geteuid") and os.geteuid() == 0:
+        def demote():
+            os.setgid(uid)
+            os.setuid(uid)
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PYTHONHASHSEED": "0",
+           "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
+    proc = subprocess.Popen([sys.executable, "-B", "-s", "-u", solver_path], cwd=cwd, env=env,
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, bufsize=1, preexec_fn=demote)
+    out_q = queue.Queue()
+    err_lines = []
+    threading.Thread(target=_reader, args=(proc.stdout, out_q), daemon=True).start()
+    threading.Thread(target=_drain, args=(proc.stderr, err_lines), daemon=True).start()
+    deadline = time.time() + wall_seconds
+    trace = []
+    outcome = {"result": None, "error": None, "messages": 0, "trace": trace}
+
+    def send(obj):
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+
+    try:
+        send({"type": "hello", "protocol": 1, "config": lab.public_config()})
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                outcome["error"] = "wall-clock limit reached"
+                break
+            try:
+                line = out_q.get(timeout=min(remaining, 5.0))
+            except queue.Empty:
+                continue
+            if line is None:
+                outcome["error"] = "solver exited without submitting" + (
+                    ": " + " | ".join(err_lines[-3:]) if err_lines else "")
+                break
+            outcome["messages"] += 1
+            if outcome["messages"] > max_messages:
+                outcome["error"] = "message limit reached"
+                break
+            try:
+                msg = json.loads(line)
+                action = msg.pop("action")
+            except Exception:
+                outcome["error"] = "malformed message"
+                break
+            if action == "submit":
+                outcome["result"] = msg.get("result")
+                trace.append((action, True))
+                break
+            try:
+                reply = {"ok": True, "result": lab.handle(action, msg)}
+                trace.append((action, True))
+            except LabError as e:
+                reply = {"ok": False, "error": str(e)}
+                trace.append((action, False))
+            except Exception as e:  # a malformed request must not crash the harness
+                reply = {"ok": False, "error": "invalid request: %s" % type(e).__name__}
+                trace.append((action, False))
+            send(reply)
+    except BrokenPipeError:
+        outcome["error"] = outcome["error"] or "solver closed the pipe"
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+        proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+    return outcome
